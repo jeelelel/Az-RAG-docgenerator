@@ -486,6 +486,64 @@ async def conversation_internal(request_body, request_headers):
             "chat_type": str(chat_type),
             "streaming_enabled": app_settings.azure_openai.stream
         })
+        
+        # Check if this is a template generation request - use SimpleRAG fallback
+        if chat_type == ChatType.TEMPLATE:
+            print("Template generation request detected, using SimpleRAG fallback...")
+            try:
+                from backend.simple_rag import simple_rag
+                
+                # Extract the user message
+                messages = request_body.get("messages", [])
+                if messages and len(messages) > 0:
+                    user_message = messages[-1].get("content", "")
+                    
+                    print(f"Processing template generation for: '{user_message}'")
+                    
+                    # Create a comprehensive prompt for document generation
+                    user_prompt = f"""Generate a comprehensive document template based on: {user_message}
+                    
+Please provide a well-structured, professional document that includes:
+1. Relevant information from the knowledge base
+2. Proper formatting with headers and sections
+3. Specific details and examples where available
+4. Professional language appropriate for the topic
+
+Use information from the retrieved documents and provide comprehensive content."""
+                    
+                    # Collect the full response
+                    full_response = ""
+                    async for chunk in simple_rag.chat(user_prompt):
+                        if chunk:
+                            full_response += chunk
+                    
+                    if not full_response.strip():
+                        full_response = "I was unable to find content related to your query and could not generate a template. Please try again."
+                    
+                    # Format response in the expected structure
+                    result = {
+                        "choices": [{
+                            "messages": [{
+                                "content": full_response,
+                                "role": "assistant"
+                            }]
+                        }],
+                        "history_metadata": request_body.get("history_metadata", {})
+                    }
+                    
+                    print(f"Template generation completed successfully")
+                    return jsonify(result)
+                else:
+                    print("No messages found in template request")
+                    return jsonify({"error": "No messages provided"}), 400
+                    
+            except Exception as template_ex:
+                print(f"Template generation fallback failed: {template_ex}")
+                # Fall back to original agent-based approach if SimpleRAG fails
+                result = await complete_chat_request(request_body, request_headers)
+                return jsonify(result)
+        
+        # Original logic for browse chat
         if app_settings.azure_openai.stream and chat_type == ChatType.BROWSE:
             result = await stream_chat_request(request_body, request_headers)
             response = await make_response(format_as_ndjson(result))
@@ -544,14 +602,70 @@ def get_frontend_settings():
 # Conversation History API #
 @bp.route("/history/generate", methods=["POST"])
 async def add_conversation():
+    # check request for conversation_id
+    request_json = await request.get_json()
+    
+    # Check if this is a template generation request - use SimpleRAG directly without CosmosDB
+    if request_json.get("chat_type") == "template":
+        print("Template generation request detected in /history/generate, using SimpleRAG...")
+        try:
+            from backend.simple_rag import simple_rag
+            
+            # Extract the user message
+            messages = request_json.get("messages", [])
+            if messages and len(messages) > 0:
+                user_message = messages[-1].get("content", "")
+                
+                print(f"Processing template generation for: '{user_message}'")
+                
+                # Create a comprehensive prompt for document generation
+                user_prompt = f"""Generate a comprehensive document template based on: {user_message}
+                
+Please provide a well-structured, professional document that includes:
+1. Relevant information from the knowledge base
+2. Proper formatting with headers and sections
+3. Specific details and examples where available
+4. Professional language appropriate for the topic
+
+Use information from the retrieved documents and provide comprehensive content."""
+                
+                # Collect the full response
+                full_response = ""
+                async for chunk in simple_rag.chat(user_prompt):
+                    if chunk:
+                        full_response += chunk
+                
+                if not full_response.strip():
+                    full_response = "I was unable to find content related to your query and could not generate a template. Please try again."
+                
+                # Format response in the expected structure
+                result = {
+                    "choices": [{
+                        "messages": [{
+                            "content": full_response,
+                            "role": "assistant"
+                        }]
+                    }],
+                    "history_metadata": {}
+                }
+                
+                print(f"Template generation completed successfully")
+                return jsonify(result)
+            else:
+                print("No messages found in template request")
+                return jsonify({"error": "No messages provided"}), 400
+                
+        except Exception as template_ex:
+            print(f"Template generation fallback failed: {template_ex}")
+            return jsonify({"error": str(template_ex)}), 500
+    
+    # Original logic for browse chat with CosmosDB
     authenticated_user = get_authenticated_user_details(request_headers=request.headers)
     user_id = authenticated_user["user_principal_id"]
 
     if not user_id:
         track_event_if_configured("UserIdNotFound", {"status_code": 400, "detail": "no user"})
 
-    # check request for conversation_id
-    request_json = await request.get_json()
     conversation_id = request_json.get("conversation_id", None)
 
     try:
@@ -1318,4 +1432,261 @@ async def get_section_content(request_body, request_headers):
     return response_text
 
 
+@bp.route("/simple_conversation", methods=["POST"])
+async def simple_conversation():
+    """Simple conversation endpoint that uses direct Azure OpenAI + Search without agents"""
+    try:
+        if not request.is_json:
+            return jsonify({"error": "request must be json"}), 400
+        
+        request_json = await request.get_json()
+        messages = request_json.get("messages", [])
+        chat_type = request_json.get("chat_type", "browse")  # Default to browse
+        
+        if not messages:
+            return jsonify({"error": "messages are required"}), 400
+        
+        # Get the last user message
+        user_message = None
+        for msg in reversed(messages):
+            if msg.get("role") == "user":
+                user_message = msg.get("content", "").strip()
+                break
+        
+        if not user_message:
+            return jsonify({"error": "no user message found"}), 400
+        
+        print(f"Processing chat request: '{user_message[:100]}{'...' if len(user_message) > 100 else ''}' (type: {chat_type})")
+        
+        # Import and use simple RAG
+        from backend.simple_rag import simple_rag
+        from backend.utils import format_stream_response
+        
+        # Check if this is a template generation request
+        if chat_type == "template":
+            print("Template generation request detected in /simple_conversation, using SimpleRAG...")
+            try:
+                # Create a comprehensive prompt for document generation
+                user_prompt = f"""Generate a comprehensive document template based on: {user_message}
+                
+Please provide a well-structured, professional document that includes:
+1. Relevant information from the knowledge base
+2. Proper formatting with headers and sections
+3. Specific details and examples where available
+4. Professional language appropriate for the topic
+
+Use information from the retrieved documents and provide comprehensive content."""
+                
+                # Collect the full response
+                full_response = ""
+                async for chunk in simple_rag.chat(user_prompt):
+                    if chunk:
+                        full_response += chunk
+                
+                if not full_response.strip():
+                    full_response = "I was unable to find content related to your query and could not generate a template. Please try again."
+                
+                # Format response in the expected structure for template generation
+                result = {
+                    "choices": [{
+                        "messages": [{
+                            "content": full_response,
+                            "role": "assistant"
+                        }]
+                    }],
+                    "history_metadata": {}
+                }
+                
+                print(f"Template generation completed successfully")
+                return jsonify(result)
+                
+            except Exception as template_ex:
+                print(f"Template generation failed: {template_ex}")
+                return jsonify({"error": str(template_ex)}), 500
+        
+        # Original browse/chat logic for streaming responses
+        async def generate():
+            try:
+                # Send initial search message
+                search_chunk = {
+                    "answer": "🔍 Searching documents...\n\n"
+                }
+                formatted_response = format_stream_response(search_chunk, {})
+                if formatted_response:
+                    yield json.dumps(formatted_response) + "\n"
+                
+                # Collect the full response from SimpleRAG
+                full_response = ""
+                chunks_received = 0
+                async for chunk in simple_rag.chat(user_message):
+                    if chunk:
+                        full_response += chunk
+                        chunks_received += 1
+                        
+                        # Send incremental updates every 20 chunks to show progress
+                        if chunks_received % 20 == 0:
+                            progress_chunk = {
+                                "answer": full_response
+                            }
+                            formatted_response = format_stream_response(progress_chunk, {})
+                            if formatted_response:
+                                yield json.dumps(formatted_response) + "\n"
+                
+                # Send final complete response
+                if full_response:
+                    final_chunk = {
+                        "answer": full_response
+                    }
+                    formatted_response = format_stream_response(final_chunk, {})
+                    if formatted_response:
+                        yield json.dumps(formatted_response) + "\n"
+                elif chunks_received == 0:
+                    error_chunk = {
+                        "answer": "No response was generated. Please try again with a different question."
+                    }
+                    formatted_response = format_stream_response(error_chunk, {})
+                    if formatted_response:
+                        yield json.dumps(formatted_response) + "\n"
+                
+                print(f"Sent complete response with {chunks_received} chunks for user query")
+                
+            except Exception as stream_error:
+                print(f"Error in response stream: {stream_error}")
+                error_chunk = {
+                    "answer": f"An error occurred while generating the response: {str(stream_error)}"
+                }
+                formatted_response = format_stream_response(error_chunk, {})
+                if formatted_response:
+                    yield json.dumps(formatted_response) + "\n"
+        
+        response = await make_response(generate())
+        response.timeout = None
+        response.mimetype = "application/json-lines"
+        return response
+        
+    except Exception as e:
+        print(f"Error in simple_conversation: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
+@bp.route("/simple_section_generate", methods=["POST"])
+async def simple_section_generate():
+    """Simple section generation endpoint that uses direct Azure OpenAI + Search without agents"""
+    try:
+        request_json = await request.get_json()
+        
+        # Verify required fields
+        if "sectionTitle" not in request_json:
+            return jsonify({"error": "sectionTitle is required"}), 400
+
+        if "sectionDescription" not in request_json:
+            return jsonify({"error": "sectionDescription is required"}), 400
+
+        section_title = request_json["sectionTitle"]
+        section_description = request_json["sectionDescription"]
+        
+        print(f"Generating section: '{section_title}' - {section_description}")
+        
+        # Create a comprehensive prompt for document generation
+        user_prompt = f"""Based on the available documents, generate a comprehensive section for:
+
+Title: {section_title}
+Description: {section_description}
+
+Please create a well-structured, professional document section that includes:
+1. Relevant information from the knowledge base
+2. Proper formatting with headers and bullet points
+3. Specific details and examples where available
+4. Professional language appropriate for the topic
+
+Make sure to use information from the retrieved documents and cite sources when possible."""
+
+        # Import and use simple RAG
+        from backend.simple_rag import simple_rag
+        
+        print("Starting section generation with SimpleRAG...")
+        
+        # Collect the full response
+        full_response = ""
+        chunks_received = 0
+        async for chunk in simple_rag.chat(user_prompt):
+            if chunk:
+                full_response += chunk
+                chunks_received += 1
+        
+        print(f"Section generation completed with {chunks_received} chunks")
+        
+        if not full_response.strip():
+            return jsonify({
+                "error": "I was unable to find content related to your query and could not generate a template. Please try again."
+            }), 400
+        
+        # Clean up the response (remove any unwanted markers)
+        cleaned_response = re.sub(r'【(\d+:\d+)†source】', '', full_response)
+        cleaned_response = cleaned_response.strip()
+        
+        return jsonify({"section_content": cleaned_response}), 200
+        
+    except Exception as e:
+        print(f"Error in simple_section_generate: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
+@bp.route("/document/<doc_id>", methods=["GET"])
+async def document_read(doc_id: str):
+    """Read a document by ID - for now, we'll use the doc_id as a search query"""
+    try:
+        # Import and use simple RAG
+        from backend.simple_rag import simple_rag
+        
+        print(f"Document read request for ID: {doc_id}")
+        
+        # For now, treat the doc_id as a search query since we don't have a document store
+        # In a full implementation, this would look up a stored document by ID
+        user_prompt = f"Provide comprehensive information about: {doc_id}"
+        
+        print("Starting document retrieval with SimpleRAG...")
+        
+        # Collect the full response
+        full_response = ""
+        chunks_received = 0
+        async for chunk in simple_rag.chat(user_prompt):
+            if chunk:
+                full_response += chunk
+                chunks_received += 1
+        
+        print(f"Document retrieval completed with {chunks_received} chunks")
+        
+        if not full_response.strip():
+            return jsonify({
+                "error": "Document not found or no content available for this query."
+            }), 404
+        
+        # Clean up the response (remove any unwanted markers)
+        cleaned_response = re.sub(r'【(\d+:\d+)†source】', '', full_response)
+        cleaned_response = cleaned_response.strip()
+        
+        # Return in the format expected by the frontend
+        return jsonify({
+            "content": cleaned_response,
+            "full_content": cleaned_response
+        }), 200
+        
+    except Exception as e:
+        print(f"Error in document_read: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
 app = create_app()
+
+if __name__ == "__main__":
+    import os
+    
+    port = int(os.environ.get("PORT", 8000))
+    app.run(debug=True, host="127.0.0.1", port=port)

@@ -27,6 +27,8 @@ export const parseCitationFromMessage = (message: ChatMessage) => {
 
 export const cleanJSON = (jsonString: string) => {
     try {
+        console.log('🧹 cleanJSON input:', jsonString.substring(0, 200) + '...');
+        
         let lines: string[]
         let cleanString = ''
         lines = jsonString.split('\n')
@@ -35,8 +37,11 @@ export const cleanJSON = (jsonString: string) => {
                 cleanString += line.trim()
             }
         })
+        
+        console.log('🧹 cleanJSON output:', cleanString.substring(0, 200) + '...');
         return cleanString
     } catch (e) {
+        console.error('❌ cleanJSON error:', e);
         return ''
     }
 }

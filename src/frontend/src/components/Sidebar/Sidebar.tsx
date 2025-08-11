@@ -122,7 +122,7 @@ const Sidebar = (): JSX.Element => {
 
   const currentView = determineView()
     // inactive, disabled, active
-    var draftButtonState = NavigationButtonStates.Disabled
+    var draftButtonState = NavigationButtonStates.Inactive  // Temporarily always allow Draft tab
     if (appStateContext?.state.draftedDocument) {
       draftButtonState = currentView === 'draft' ? NavigationButtonStates.Active : NavigationButtonStates.Inactive
     }
@@ -170,6 +170,7 @@ const Sidebar = (): JSX.Element => {
           buttonState={draftButtonState}
          
           onClick={() => {
+            // Always allow navigation to Draft for debugging
             navigate('/draft')
           }}
         />

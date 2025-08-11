@@ -16,7 +16,7 @@ export async function conversationApi(
   abortSignal: AbortSignal,
   chatType: ChatType = ChatType.Browse
 ): Promise<Response> {
-  const response = await fetch('/conversation', {
+  const response = await fetch('/simple_conversation', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json'
@@ -373,7 +373,7 @@ export const sectionGenerate = async (options: SectionGenerateRequest): Promise<
     sectionDescription: options.sectionDescription
   })
 
-  const response = await fetch('/section/generate', {
+  const response = await fetch('/simple_section_generate', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json'

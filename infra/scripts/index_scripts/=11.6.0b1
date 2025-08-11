@@ -1,0 +1,42 @@
+Defaulting to user installation because normal site-packages is not writeable
+Requirement already satisfied: azure-search-documents in /home/vscode/.local/lib/python3.11/site-packages (11.4.0)
+Collecting azure-search-documents
+  Using cached azure_search_documents-11.5.3-py3-none-any.whl.metadata (23 kB)
+Requirement already satisfied: azure-identity in /home/vscode/.local/lib/python3.11/site-packages (1.15.0)
+Collecting azure-identity
+  Using cached azure_identity-1.23.1-py3-none-any.whl.metadata (82 kB)
+Requirement already satisfied: azure-core in /home/vscode/.local/lib/python3.11/site-packages (1.29.5)
+Collecting azure-core
+  Using cached azure_core-1.35.0-py3-none-any.whl.metadata (44 kB)
+Requirement already satisfied: azure-common>=1.1 in /home/vscode/.local/lib/python3.11/site-packages (from azure-search-documents) (1.1.28)
+Requirement already satisfied: isodate>=0.6.0 in /home/vscode/.local/lib/python3.11/site-packages (from azure-search-documents) (0.7.2)
+Requirement already satisfied: typing-extensions>=4.6.0 in /home/vscode/.local/lib/python3.11/site-packages (from azure-search-documents) (4.14.1)
+Requirement already satisfied: cryptography>=2.5 in /home/vscode/.local/lib/python3.11/site-packages (from azure-identity) (45.0.5)
+Requirement already satisfied: msal>=1.30.0 in /home/vscode/.local/lib/python3.11/site-packages (from azure-identity) (1.33.0)
+Requirement already satisfied: msal-extensions>=1.2.0 in /home/vscode/.local/lib/python3.11/site-packages (from azure-identity) (1.3.1)
+Requirement already satisfied: requests>=2.21.0 in /home/vscode/.local/lib/python3.11/site-packages (from azure-core) (2.32.4)
+Requirement already satisfied: six>=1.11.0 in /home/vscode/.local/lib/python3.11/site-packages (from azure-core) (1.17.0)
+Requirement already satisfied: cffi>=1.14 in /home/vscode/.local/lib/python3.11/site-packages (from cryptography>=2.5->azure-identity) (1.17.1)
+Requirement already satisfied: PyJWT<3,>=1.0.0 in /home/vscode/.local/lib/python3.11/site-packages (from PyJWT[crypto]<3,>=1.0.0->msal>=1.30.0->azure-identity) (2.10.1)
+Requirement already satisfied: charset_normalizer<4,>=2 in /home/vscode/.local/lib/python3.11/site-packages (from requests>=2.21.0->azure-core) (3.4.2)
+Requirement already satisfied: idna<4,>=2.5 in /home/vscode/.local/lib/python3.11/site-packages (from requests>=2.21.0->azure-core) (3.10)
+Requirement already satisfied: urllib3<3,>=1.21.1 in /home/vscode/.local/lib/python3.11/site-packages (from requests>=2.21.0->azure-core) (2.5.0)
+Requirement already satisfied: certifi>=2017.4.17 in /home/vscode/.local/lib/python3.11/site-packages (from requests>=2.21.0->azure-core) (2025.7.14)
+Requirement already satisfied: pycparser in /home/vscode/.local/lib/python3.11/site-packages (from cffi>=1.14->cryptography>=2.5->azure-identity) (2.22)
+Using cached azure_search_documents-11.5.3-py3-none-any.whl (298 kB)
+Using cached azure_identity-1.23.1-py3-none-any.whl (186 kB)
+Using cached azure_core-1.35.0-py3-none-any.whl (210 kB)
+Installing collected packages: azure-core, azure-search-documents, azure-identity
+  Attempting uninstall: azure-core
+    Found existing installation: azure-core 1.29.5
+    Uninstalling azure-core-1.29.5:
+      Successfully uninstalled azure-core-1.29.5
+  Attempting uninstall: azure-search-documents
+    Found existing installation: azure-search-documents 11.4.0
+    Uninstalling azure-search-documents-11.4.0:
+      Successfully uninstalled azure-search-documents-11.4.0
+  Attempting uninstall: azure-identity
+    Found existing installation: azure-identity 1.15.0
+    Uninstalling azure-identity-1.15.0:
+      Successfully uninstalled azure-identity-1.15.0
+Successfully installed azure-core-1.35.0 azure-identity-1.23.1 azure-search-documents-11.5.3

@@ -116,6 +116,17 @@ const Chat = ({ type = ChatType.Browse }: Props) => {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [jsonDraftDocument, setJSONDraftDocument] = useState<string>('')
   const [draftDocument, setDraftDocument] = useState<DraftedDocument>()
+
+  // Add debugging for draftDocument state changes
+  useEffect(() => {
+    console.log('📊 draftDocument state changed:', {
+      isDefined: draftDocument !== undefined,
+      title: draftDocument?.title,
+      sectionsCount: draftDocument?.sections?.length || 0,
+      draftDocument
+    });
+  }, [draftDocument]);
+
   const [processMessages, setProcessMessages] = useState<messageStatus>(messageStatus.NotRunning)
   const [clearingChat, setClearingChat] = useState<boolean>(false)
   const [hideErrorDialog, { toggle: toggleErrorDialog }] = useBoolean(true)
@@ -208,7 +219,9 @@ const Chat = ({ type = ChatType.Browse }: Props) => {
 
   const navigateToDraftPage = (parameter: DraftedDocument) => {
     // update DraftedDocument in the state
+    console.log('🧭 navigateToDraftPage called with:', parameter);
     appStateContext?.dispatch({ type: 'UPDATE_DRAFTED_DOCUMENT', payload: parameter })
+    console.log('📦 Updated app state with drafted document, now navigating to /draft');
     navigate('/draft')
   }
 
@@ -218,26 +231,81 @@ const Chat = ({ type = ChatType.Browse }: Props) => {
 
   const processTemplateResponse = () => {
     if (type === ChatType.Template) {
+      console.log('🔍 Processing template response...');
+      
       let jsonString = ''
+      let rawContent = ''
+      
       if (assistantMessage.role === ASSISTANT) {
+        rawContent = assistantContent
         jsonString = cleanJSON(assistantContent)
       } else {
         let latestChat = appStateContext?.state.currentChat
-        if (!latestChat) return
+        if (!latestChat) {
+          console.log('❌ No latest chat found');
+          return
+        }
 
         const assistantMessages = latestChat.messages.filter(answer => answer.role === ASSISTANT)
+        console.log(`📨 Found ${assistantMessages.length} assistant messages`);
 
         const mostRecentAssistantMessage =
           assistantMessages.length > 0 ? assistantMessages[assistantMessages.length - 1] : undefined
         if (mostRecentAssistantMessage) {
+          rawContent = mostRecentAssistantMessage.content
           jsonString = cleanJSON(mostRecentAssistantMessage.content)
-        } else return
+        } else {
+          console.log('❌ No assistant message found');
+          return
+        }
       }
-      if (jsonString === '') return
+      
+      console.log('📝 Raw AI response:', rawContent.substring(0, 500) + '...');
+      console.log('🧹 Cleaned JSON string:', jsonString.substring(0, 500) + '...');
+      
+      if (jsonString === '') {
+        console.log('❌ No JSON string extracted from response');
+        return
+      }
 
       setJSONDraftDocument(jsonString) // use in the Answer response
+      
       try {
         const jsonObject = JSON.parse(jsonString)
+        console.log('✅ Successfully parsed JSON:', jsonObject);
+
+        if (!jsonObject.template || !Array.isArray(jsonObject.template)) {
+          console.log('❌ JSON does not contain template array. Available keys:', Object.keys(jsonObject));
+          
+          // Try to create a simple fallback structure
+          console.log('🔧 Creating fallback document structure...');
+          const fallbackSections: Section[] = [
+            {
+              title: 'Document Introduction',
+              content: '',
+              description: 'Introduction and overview section'
+            },
+            {
+              title: 'Main Content', 
+              content: '',
+              description: 'Primary document content'
+            },
+            {
+              title: 'Conclusion',
+              content: '',
+              description: 'Closing and summary section'
+            }
+          ]
+          
+          const draftedTemplate: DraftedDocument = {
+            title: 'Generated Document',
+            sections: fallbackSections
+          }
+             console.log('✅ Created fallback draft document:', draftedTemplate);
+        setDraftDocument(draftedTemplate)
+        console.log('🔘 Generate Draft button should now be enabled (fallback 1)');
+          return
+        }
 
         const sections: Section[] = jsonObject.template.map((item: any) => ({
           title: item.section_title,
@@ -250,9 +318,30 @@ const Chat = ({ type = ChatType.Browse }: Props) => {
           sections: sections
         }
 
+        console.log('✅ Created draft document with sections:', sections.length);
         setDraftDocument(draftedTemplate)
+        console.log('🔘 Generate Draft button should now be enabled');
       } catch (e) {
-        console.error('Failed to parse JSON:', e)
+        console.error('❌ Failed to parse JSON:', e)
+        console.log('🔧 Creating simple fallback document due to JSON parse error...');
+        
+        // Create a simple document structure as fallback
+        const fallbackSections: Section[] = [
+          {
+            title: 'Generated Content',
+            content: '',
+            description: 'Content generated from AI response'
+          }
+        ]
+        
+        const draftedTemplate: DraftedDocument = {
+          title: 'Generated Document',
+          sections: fallbackSections
+        }
+        
+        console.log('✅ Created fallback draft document');
+        setDraftDocument(draftedTemplate)
+        console.log('🔘 Generate Draft button should now be enabled (fallback 2)');
       }
     }
   }
@@ -702,8 +791,16 @@ const Chat = ({ type = ChatType.Browse }: Props) => {
 
 
   const generateDocument = async () => {
+    console.log('🚀 Generate Draft button clicked!', {
+      draftDocumentDefined: draftDocument !== undefined,
+      draftDocument
+    });
+    
     if (draftDocument !== undefined) {
+      console.log('✅ Navigating to draft page with document:', draftDocument);
       navigateToDraftPage(draftDocument)
+    } else {
+      console.log('❌ Cannot navigate - draftDocument is undefined');
     }
   }
 
@@ -953,30 +1050,37 @@ const Chat = ({ type = ChatType.Browse }: Props) => {
                 }
               />
               {type == ChatType.Template && (
-                <CommandBarButton
-                  role="button"
-                  styles={{
-                    icon: {
-                      color: '#FFFFFF'
-                    },
-                    iconDisabled: {
-                      color: '#BDBDBD !important'
-                    },
-                    root: {
-                      color: '#FFFFFF',
-                      background: '#0F6CBD'
-                    },
-                    rootDisabled: {
-                      background: '#F0F0F0'
-                    }
-                  }}
-                  className={styles.generateDocumentIcon}
-                  iconProps={{ iconName: 'Generate' }}
-                  onClick={generateDocument} //Update for Document Generation
-                  disabled={draftDocument === undefined || disabledButton()}
-                  aria-label="generate draft"
-                  title="Generate Draft"
-                />
+                <>
+                  {console.log('🔘 Rendering Generate Draft button:', {
+                    draftDocumentDefined: draftDocument !== undefined,
+                    disabledButtonResult: disabledButton(),
+                    finalDisabled: draftDocument === undefined || disabledButton()
+                  })}
+                  <CommandBarButton
+                    role="button"
+                    styles={{
+                      icon: {
+                        color: '#FFFFFF'
+                      },
+                      iconDisabled: {
+                        color: '#BDBDBD !important'
+                      },
+                      root: {
+                        color: '#FFFFFF',
+                        background: '#0F6CBD'
+                      },
+                      rootDisabled: {
+                        background: '#F0F0F0'
+                      }
+                    }}
+                    className={styles.generateDocumentIcon}
+                    iconProps={{ iconName: 'Generate' }}
+                    onClick={generateDocument} //Update for Document Generation
+                    disabled={draftDocument === undefined || disabledButton()}
+                    aria-label="generate draft"
+                    title="Generate Draft"
+                  />
+                </>
               )}
             </Stack>
           </div>

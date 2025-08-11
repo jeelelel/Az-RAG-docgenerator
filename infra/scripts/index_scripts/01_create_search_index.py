@@ -1,6 +1,3 @@
-from azure.identity import AzureCliCredential
-from azure.keyvault.secrets import SecretClient
-from azure.search.documents.indexes import SearchIndexClient
 from azure.search.documents.indexes.models import (
     SearchField,
     SearchFieldDataType,
@@ -15,53 +12,56 @@ from azure.search.documents.indexes.models import (
     SemanticField,
     SearchIndex
 )
+from azure.search.documents.indexes import SearchIndexClient
+from azure.core.credentials import AzureKeyCredential
 
 # === Configuration ===
-key_vault_name = 'kv_to-be-replaced'
-managed_identity_client_id = 'mici_to-be-replaced'
-index_name = "pdf_index"
+# CORRECTED Configuration to match your actual Azure resources
+search_service_name = "recipe-search"  # Your search resource name
+search_admin_key = "REDACTED_AZURE_SEARCH_KEY"  # Your admin key
+azure_openai_endpoint = "https://fridayjuly4azureopenai.openai.azure.com/"  # Your actual endpoint
+azure_openai_key = "REDACTED_AZURE_OPENAI_KEY"  # Your OpenAI key
+embedding_model = "text-embedding-3-large"  # CORRECTED: Your actual deployed model
 
+# Use your existing index name
+index_name = "food-recipe-index"  # Your index name
 
-def get_secrets_from_kv(secret_name: str) -> str:
-    """
-    Retrieves a secret value from Azure Key Vault.
-    Args:
-        secret_name (str): Name of the secret.
-        credential (AzureCliCredential): Credential with access to Key Vault.
-    Returns:
-        str: The secret value.
-    """
-    kv_credential = AzureCliCredential()
-    secret_client = SecretClient(
-        vault_url=f"https://{key_vault_name}.vault.azure.net/",
-        credential=kv_credential
-    )
-    return secret_client.get_secret(secret_name).value
+def delete_and_recreate_index():
+    """Delete existing index and create new one with correct vector dimensions"""
+    
+    print(f"🗑️  Deleting and recreating search index: {index_name}")
+    print(f"📡 Search service: {search_service_name}")
+    print(f"🤖 Azure OpenAI: fridayjuly4azureopenai")
+    print(f"📊 Embedding model: {embedding_model}")
+    print(f"🔢 Vector dimensions: 3072 (text-embedding-3-large)")
 
-
-def create_search_index():
-    """Create an Azure Search index."""
-
-    # Shared credential
-    credential = AzureCliCredential()
-
-    # Retrieve secrets from Key Vault
-    search_endpoint = get_secrets_from_kv("AZURE-SEARCH-ENDPOINT")
-    openai_resource_url = get_secrets_from_kv("AZURE-OPENAI-ENDPOINT")
-    embedding_model = get_secrets_from_kv("AZURE-OPENAI-EMBEDDING-MODEL")
-
+    # Use API Key Authentication
+    search_endpoint = f"https://{search_service_name}.search.windows.net"
+    credential = AzureKeyCredential(search_admin_key)
     index_client = SearchIndexClient(endpoint=search_endpoint, credential=credential)
+    
+    print("✅ Authentication successful")
 
-    # Define index schema
+    # Step 1: Delete existing index if it exists
+    try:
+        index_client.delete_index(index_name)
+        print(f"🗑️  Successfully deleted existing index: {index_name}")
+    except Exception as e:
+        print(f"⚠️  Index deletion note: {e}")
+        print("   (This is normal if the index doesn't exist yet)")
+
+    # Step 2: Define new index schema for PDF documents
     fields = [
         SearchField(name="id", type=SearchFieldDataType.String, key=True),
         SearchField(name="chunk_id", type=SearchFieldDataType.String),
-        SearchField(name="content", type=SearchFieldDataType.String),
-        SearchField(name="sourceurl", type=SearchFieldDataType.String),
+        SearchField(name="content", type=SearchFieldDataType.String, searchable=True),
+        SearchField(name="title", type=SearchFieldDataType.String, searchable=True),
+        SearchField(name="filepath", type=SearchFieldDataType.String),
+        SearchField(name="url", type=SearchFieldDataType.String),
         SearchField(
             name="contentVector",
             type=SearchFieldDataType.Collection(SearchFieldDataType.Single),
-            vector_search_dimensions=1536,
+            vector_search_dimensions=3072,  # CORRECTED: text-embedding-3-large uses 3072 dimensions
             vector_search_profile_name="myHnswProfile",
         ),
     ]
@@ -83,7 +83,7 @@ def create_search_index():
                 vectorizer_name="myOpenAI",
                 kind="azureOpenAI",
                 parameters=AzureOpenAIVectorizerParameters(
-                    resource_url=openai_resource_url,
+                    resource_url=azure_openai_endpoint,
                     deployment_name=embedding_model,
                     model_name=embedding_model
                 )
@@ -91,25 +91,48 @@ def create_search_index():
         ]
     )
 
-    # Define semantic search configuration
+    # Define semantic search configuration for PDF content
     semantic_config = SemanticConfiguration(
-        name="my-semantic-config",
+        name="pdf-semantic-config",
         prioritized_fields=SemanticPrioritizedFields(
-            keywords_fields=[SemanticField(field_name="chunk_id")],
+            title_field=SemanticField(field_name="title"),
+            keywords_fields=[SemanticField(field_name="filepath")],
             content_fields=[SemanticField(field_name="content")],
         ),
     )
 
     semantic_search = SemanticSearch(configurations=[semantic_config])
 
+    # Step 3: Create new index
     index = SearchIndex(
         name=index_name,
         fields=fields,
         vector_search=vector_search,
         semantic_search=semantic_search,
     )
-    result = index_client.create_or_update_index(index)
-    print(f"Search index '{result.name}' created or updated successfully.")
+    
+    try:
+        result = index_client.create_index(index)  # Changed to create_index instead of create_or_update_index
+        print(f"✅ Search index '{result.name}' created successfully!")
+        
+        # Display configuration summary
+        print(f"\n📋 Configuration Summary:")
+        print(f"   🔍 Search Service: {search_service_name}")
+        print(f"   🔑 Search Key: ****{search_admin_key[-4:]}")
+        print(f"   🤖 OpenAI Service: fridayjuly4azureopenai")
+        print(f"   🌐 OpenAI Endpoint: {azure_openai_endpoint}")
+        print(f"   🔑 OpenAI Key: ****{azure_openai_key[-4:]}")
+        print(f"   📝 Embedding Model: {embedding_model}")
+        print(f"   🔢 Vector Dimensions: 3072")
+        print(f"   📊 Index Name: {index_name}")
+        print(f"   🎯 Vector Search: Enabled with HNSW algorithm")
+        print(f"   🔍 Semantic Search: Enabled")
+        
+        return result
+        
+    except Exception as e:
+        print(f"❌ Error creating index: {e}")
+        raise
 
-
-create_search_index()
+if __name__ == "__main__":
+    delete_and_recreate_index()

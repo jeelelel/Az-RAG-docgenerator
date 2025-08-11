@@ -1,148 +1,232 @@
-# Data Preparation
+# Document Generator RAG
 
-# Prepare Data Locally
+## Overview
+AI-powered document search and generation using Azure AI services. This application allows users to generate professional documents by leveraging Azure OpenAI and Azure AI Search capabilities.
+
 ## Setup
-- Install the necessary packages listed in requirements.txt, e.g. `pip install --user -r requirements-dev.txt`
 
-## Configure
-- Create a .env file similar to the .env.example file. Fill in the values for the environment variables.
-- Create a config file like `config.json`. The format should be a list of JSON objects, with each object specifying a configuration of local data path and target search service and index.
+### Prerequisites
+- Python 3.8 or higher
+- Node.js 16 or higher
+- Azure OpenAI resource
+- Azure AI Search service
+- Azure subscription
 
+### Installation
+1. Install Python dependencies:
+   ```bash
+   pip install --user -r requirements.txt
+   ```
+
+2. Install frontend dependencies:
+   ```bash
+   cd src/frontend
+   npm install
+   ```
+
+## Configuration
+
+### Environment Variables
+Create a `.env` file in the `src` directory based on the example below:
+
+```env
+# Application Environment
+APP_ENV=dev
+
+# Azure OpenAI Configuration
+AZURE_OPENAI_ENDPOINT=https://your-openai-resource.openai.azure.com/
+AZURE_OPENAI_KEY=your-azure-openai-key
+AZURE_OPENAI_MODEL=gpt-4o
+AZURE_OPENAI_EMBEDDING_ENDPOINT=https://your-openai-resource.openai.azure.com/
+AZURE_OPENAI_EMBEDDING_KEY=your-azure-openai-key
+AZURE_OPENAI_EMBEDDING_MODEL=text-embedding-3-large
+
+# Azure AI Search Configuration
+AZURE_SEARCH_SERVICE=your-search-service-name
+AZURE_SEARCH_INDEX=your-index-name
+AZURE_SEARCH_KEY=your-search-service-key
+AZURE_SEARCH_ENDPOINT=https://your-search-service.search.windows.net
+
+# UI Settings
+UI_TITLE=Document Generator RAG
+UI_CHAT_TITLE=Document Generator RAG
+UI_CHAT_DESCRIPTION=AI-powered document search and generation using Azure AI services
+
+# Authentication (optional - disabled for local development)
+AZURE_USE_AUTHENTICATION=false
+AZURE_ENFORCE_ACCESS_CONTROL=false
+
+# AI Search Settings
+AZURE_SEARCH_USE_SEMANTIC_SEARCH=true
+AZURE_SEARCH_SEMANTIC_SEARCH_CONFIG=default
+AZURE_SEARCH_TOP_K=3
+AZURE_SEARCH_ENABLE_IN_DOMAIN=true
+
+# AI Foundry Settings (optional)
+AZURE_AI_AGENT_ENDPOINT=https://your-endpoint.cognitiveservices.azure.com/
+AZURE_AI_AGENT_API_VERSION=2024-07-01-preview
 ```
+
+### Required Azure Resources
+
+#### 1. Azure OpenAI Resource
+- Deploy a GPT-4o model for text generation
+- Deploy a text-embedding-3-large model for embeddings
+- Note the endpoint and API key
+
+#### 2. Azure AI Search Service
+- Create a search service in your preferred region
+- Create an index for your documents (e.g., "pdl-index")
+- Note the service name, endpoint, and admin key
+
+## Running the Application
+
+### Backend Server
+1. Navigate to the backend directory:
+   ```bash
+   cd src/backend
+   ```
+
+2. Start the Python backend server:
+   ```bash
+   python main.py
+   ```
+   The backend will run on `http://localhost:50505`
+
+### Frontend Server
+1. Navigate to the frontend directory:
+   ```bash
+   cd src/frontend
+   ```
+
+2. Start the React development server:
+   ```bash
+   npm run dev
+   ```
+   The frontend will run on `http://localhost:5176`
+
+## Using the Application
+
+### Document Generation Workflow
+1. **Generate Tab**: 
+   - Ask AI to generate a document (e.g., "Generate a promissory note for $50,000")
+   - The AI will create a structured document template
+
+2. **Generate Draft Button**: 
+   - Click the "Generate Draft" button after AI responds
+   - This creates a draft document with sections
+
+3. **Draft Tab**: 
+   - Edit and customize the generated document sections
+   - Review and modify content as needed
+
+4. **Export Document**: 
+   - Click "Export Document" to download as a Word document
+   - Documents are exported in professional Times New Roman format
+
+### Features
+- **AI-powered document generation** using GPT-4o
+- **Semantic search** across your document corpus
+- **Professional Word export** with proper formatting
+- **Section-based editing** for easy customization
+- **Real-time document drafting** and editing
+
+## Troubleshooting
+
+### Common Issues
+1. **Backend not starting**: Check your `.env` file has all required Azure credentials
+2. **Frontend build errors**: Ensure Node.js version is 16 or higher
+3. **Export button disabled**: Ensure all document sections are loaded and title is set
+4. **Draft tab blank**: Check browser console for errors and verify document generation completed
+
+### Debug Mode
+The application includes extensive logging. Check browser console for debug messages prefixed with:
+- 🎯 (Draft component)
+- 🔍 (Processing)
+- 🚀 (Actions)
+- ✅/❌ (Status indicators)
+
+## Development Notes
+
+### Project Structure
+```
+src/
+├── backend/          # Python FastAPI backend
+├── frontend/         # React TypeScript frontend
+├── .env             # Environment variables
+└── requirements.txt # Python dependencies
+```
+
+### API Endpoints
+- `/ask` - Document generation requests
+- `/chat` - Chat functionality  
+- `/conversation` - Conversation management
+- `/document` - Document operations
+- `/frontend_settings` - UI configuration
+
+## Optional Features
+
+### Cosmos DB Integration (Currently Disabled)
+For conversation history storage, you can enable Cosmos DB by adding these environment variables:
+
+```env
+# Azure Cosmos DB Configuration
+AZURE_COSMOSDB_DATABASE=conversationhistory
+AZURE_COSMOSDB_ACCOUNT=your-cosmos-account
+AZURE_COSMOSDB_ACCOUNT_KEY=your-cosmos-key
+AZURE_COSMOSDB_CONVERSATIONS_CONTAINER=conversations
+```
+
+### Authentication (Currently Disabled)
+For production deployments, enable authentication:
+
+```env
+AZURE_USE_AUTHENTICATION=true
+AZURE_ENFORCE_ACCESS_CONTROL=true
+```
+
+### Document Data Ingestion
+If you need to add documents to your search index, you can use the data preparation scripts in the `/scripts` folder. This allows the AI to search through your document corpus when generating responses.
+
+#### Basic Data Ingestion
+1. Place your documents in a local folder or Azure Blob Storage
+2. Create a `config.json` file with your search service configuration:
+
+```json
 [
     {
-        "data_path": "<local path or blob URL>",
-        "location": "<azure region, e.g. 'westus2'>", 
-        "subscription_id": "<subscription id>",
-        "resource_group": "<resource group name>",
-        "search_service_name": "<search service name to use or create>",
-        "index_name": "<index name to use or create>",
-        "chunk_size": 1024, // set to null to disable chunking before ingestion
-        "token_overlap": 128 // number of tokens to overlap between chunks
-        "semantic_config_name": "default",
-        "language": "en" // setting to set language of your documents. Change if your documents are not in English. Look in data_preparation.py for SUPPORTED_LANGUAGE_CODES,
-        "vector_config_name": "default" // used if adding vectors to index
-    }
-]
-```
-
-Note: `data_path` can be a path to files located locally on your machine, or an Azure Blob URL, e.g. of the format `"https://<storage account name>.blob.core.windows.net/<container name>/<path>/"`. If a blob URL is used, the data will first be downloaded from Blob Storage to a temporary directory on your machine before data preparation proceeds.
-
-## Create Indexes and Ingest Data
-Disclaimer: Make sure there are no duplicate pages in your data. That could impact the quality of the responses you get in a negative way.
-
-- Run the data preparation script, passing in your config file. You can set njobs for parallel parsing of your files.
-
-     `python data_preparation.py --config config.json --njobs=4`
-
-### Batch creation of index
-Refer to the script run_batch_create_index.py to create multiple indexes in batch using one script.
-
-## Optional: Use URL prefix
-Each document can be associated with a URL that is stored with each document chunk in the Azure Cognitive Search index in the `url` field. If your documents were downloaded from the web, you can specify a URL prefix to use to construct the document URLs when ingesting your data. Your config file should have an additional `url_prefix` parameter like so:
-
-```
-[
-    {
-        "data_path": "<local path or blob URL>",
-        "url_prefix": "https://<source website URL>.com/"
-        "location": "<azure region, e.g. 'westus2'>", 
-        "subscription_id": "<subscription id>",
-        "resource_group": "<resource group name>",
-        "search_service_name": "<search service name to use or create>",
-        "index_name": "<index name to use or create>",
-        "chunk_size": 1024, // set to null to disable chunking before ingestion
-        "token_overlap": 128 // number of tokens to overlap between chunks
-        "semantic_config_name": "default",
-        "language": "en" // setting to set language of your documents. Change if your documents are not in English. Look in data_preparation.py for SUPPORTED_LANGUAGE_CODES,
-        "vector_config_name": "default" // used if adding vectors to index
-    }
-]
-```
-
-For each document, the URL stored with chunks from that document will be `url_prefix` concatenated with the relative path of the document in `data_path`. For example, if my `data_path` is `mydata` containing the following structure:
-```
-└───mydata
-    │   overview.html
-    │
-    └───examples
-            example1.html
-            example2.html
-```
-And `url_prefix` is `"https://my-wiki.com/"`, the resulting URLs will be:
-|File| URL|
-|---|---|
-|overview.html | `"https://my-wiki.com/overview.html"`|
-|example1.html | `"https://my-wiki.com/examples/example1.html"`|
-|example2.html | `"https://my-wiki.com/examples/example2.html"`|
-
-These URLs can then be used in the citation display in the web app. See the [README](../README.md#changing-citation-display) for more detail.
-
-If you have documents from multiple source websites, you can specify multiple paths and prefixes following the example in `config_multiple_url.json`. 
-```
-[
-    {
-        "data_paths": [
-            {
-                "path": "data/source1",
-                "url_prefix": "https://<URL for source 1>.com/"
-            },
-            {
-                "path": "data/source2",
-                "url_prefix": "https://<URL for source 2>.com/"
-            }
-        ],
-        "subscription_id": "<subscription id>",
-        "resource_group": "<resource group name>",
-        "search_service_name": "<search service name to use or create>",
-        "index_name": "<index name to use or create>",
+        "data_path": "<local path to your documents>",
+        "location": "westus2", 
+        "subscription_id": "<your subscription id>",
+        "resource_group": "<your resource group>",
+        "search_service_name": "friday4julysearch",
+        "index_name": "pdl-index",
         "chunk_size": 1024,
         "token_overlap": 128,
         "semantic_config_name": "default",
-        "language": "<Language to support for example use 'en' for English. Checked supported languages here under lucene - https://learn.microsoft.com/en-us/azure/search/index-add-language-analyzers"
+        "language": "en",
+        "vector_config_name": "default"
     }
 ]
 ```
 
-The ingestion script will loop through each path in `data_paths` and construct the document URLs following the same pattern as described above, using the specific URL prefix for each data path.
-
-You can modify the URL construction logic in `process_file()` in [data_utils.py](./data_utils.py):
-```
-url_path = None
-rel_file_path = os.path.relpath(file_path, directory_path)
-if url_prefix:
-    url_path = url_prefix + rel_file_path
-    url_path = convert_escaped_to_posix(url_path)
+3. Run the data preparation script:
+```bash
+python data_preparation.py --config config.json --njobs=4
 ```
 
-## Optional: Add vector embeddings
-Azure Cognitive Search supports vector search in public preview. See [the docs](https://learn.microsoft.com/en-us/azure/search/vector-search-overview) for more information.
+This will index your documents so the AI can reference them when generating documents.
 
-To add vectors to your index, you will first need an [Azure OpenAI resource](https://learn.microsoft.com/en-us/azure/ai-services/openai/overview) with an [Ada embedding model deployment](https://learn.microsoft.com/en-us/azure/ai-services/openai/concepts/models#embeddings-models). The `text-embedding-ada-002` model is supported.
+## Support
 
-- Get the endpoint for embedding model deployment. The endpoint will generally be of the format `https://<azure openai resource name>.openai.azure.com/openai/deployments/<ada deployment name>/embeddings?api-version=2023-06-01-preview`.
-- Run the data preparation script, passing in your config file and the embedding endpoint and key as extra arguments:
+### Getting Help
+- Check the browser console for debug messages
+- Verify all Azure resources are properly configured
+- Ensure environment variables match your Azure resource names and keys
+- Test backend connectivity at `http://localhost:50505/health` (if health endpoint exists)
 
-      `python data_preparation.py --config config.json --embedding-model-endpoint "<embedding endpoint>"`
-
-## Optional: Crack PDFs to Text
-If your data is in PDF format, you'll first need to convert from PDF to .txt format. You can use your own script for this, or use the provided conversion code here. 
-
-### Setup for PDF Cracking
-- Create a [Form Recognizer](https://learn.microsoft.com/en-us/azure/applied-ai-services/form-recognizer/create-a-form-recognizer-resource?view=form-recog-3.0.0) resource in your subscription 
-- Make sure you have the Form Recognizer SDK: `pip install azure-ai-formrecognizer`
-- Run the following command to get an access key for your Form Recognizer resource:
-  `az cognitiveservices account keys list --name "<form-rec-resource-name>" --resource-group "<resource-group-name>"`
-
-  Copy one of the keys returned by this command.
-
-### Create Indexes and Ingest Data from PDF with Form Recognizer
-Pass in your Form Recognizer resource name and key when running the data preparation script:
-
-`python data_preparation.py --config config.json --njobs=4 --form-rec-resource <form-rec-resource-name> --form-rec-key <form-rec-key>`
-
-This will use the Form Recognizer Read model by default. 
-
-If your documents have a lot of tables and relevant layout information, you can use the Form Recognizer Layout model, which is more costly and slower to run but will preserve table information with better quality. The Layout model will also help preserve some of the formatting information in your document such as titles and sub-headings, which will make the citations more readable. To use the Layout model instead of the default Read model, pass in the argument `--form-rec-use-layout`.
-
-`python data_preparation.py --config config.json --njobs=4 --form-rec-resource <form-rec-resource-name> --form-rec-key <form-rec-key> --form-rec-use-layout`
+### Known Limitations
+- Authentication is currently disabled for local development
+- Cosmos DB conversation history is optional
+- Document export currently supports Word format only
+- Frontend requires modern browser with ES6+ support

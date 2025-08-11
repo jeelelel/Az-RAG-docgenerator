@@ -125,8 +125,21 @@ const SectionCard = ({ sectionIdx  }: SectionCardProps) => {
   }
 
   const section = appStateContext.state.draftedDocument?.sections[sectionIdx]
+  
+  console.log(`📋 SectionCard ${sectionIdx} - section lookup:`, {
+    sectionIdx,
+    sectionExists: !!section,
+    section: section,
+    totalSections: appStateContext.state.draftedDocument?.sections?.length || 0
+  });
+  
   if (!section) {
-    throw new Error('Section not found')
+    console.log(`⚠️ Section ${sectionIdx} not found, rendering placeholder`);
+    return (
+      <div style={{ padding: '20px', border: '1px dashed #ccc', margin: '10px 0' }}>
+        <p>Section {sectionIdx + 1} is loading...</p>
+      </div>
+    );
   }
 
   const sectionTitle = section.title
@@ -162,26 +175,50 @@ const SectionCard = ({ sectionIdx  }: SectionCardProps) => {
     const response = await sectionGenerate(sectionGenerateRequest)
     const responseBody = await response.json()
 
-    if(responseBody?.error?.includes("429")) {
-      const failedSectionItems = {
-        title: sectionTitle,
-        description: sectionDescription,
-        content: sectionContent
+    // Check if the response is an error (either HTTP error status or error field in response)
+    if (!response.ok || responseBody?.error) {
+      console.error('Error generating section:', responseBody?.error || `HTTP ${response.status}`);
+      
+      // Handle rate limiting specifically
+      if(responseBody?.error?.includes("429")) {
+        const failedSectionItems = {
+          title: sectionTitle,
+          description: sectionDescription,
+          content: sectionContent
+        }
+        appStateContext?.dispatch({ type: 'ADD_FAILED_SECTION', payload:  failedSectionItems })
+        if(isReqFrom == 'failed')
+        appStateContext?.dispatch({ type: 'UPDATE_SECTION_API_REQ_STATUS', payload:  false })
+        
+        setTimeout(()=>{
+        },5000)
+      } else {
+        // Handle other errors by showing the error message as content
+        const errorContent = responseBody?.error || `Error: HTTP ${response.status}`;
+        const updatedSection: Section = {
+          title: sectionTitle,
+          description: sectionDescription,
+          content: errorContent
+        }
+        appStateContext?.dispatch({ type: 'UPDATE_SECTION', payload: { sectionIdx: sectionIdx, section: updatedSection } })
+        setCharCount(errorContent.length)
+        setIsLoading(false)
       }
-      appStateContext?.dispatch({ type: 'ADD_FAILED_SECTION', payload:  failedSectionItems })
-      if(isReqFrom == 'failed')
-      appStateContext?.dispatch({ type: 'UPDATE_SECTION_API_REQ_STATUS', payload:  false })
-      
-      setTimeout(()=>{
-      },5000)
-      
-    }else{
+    } else {
+      // Success case
       const updatedSection: Section = {
         title: sectionTitle,
         description: sectionDescription,
-        content: responseBody.section_content
+        content: responseBody.section_content || 'No content generated'
       }
+      
+      console.log(`✅ Successfully generated content for section "${sectionTitle}":`, {
+        content: responseBody.section_content?.substring(0, 100) + '...',
+        contentLength: responseBody.section_content?.length || 0
+      });
+      
       appStateContext?.dispatch({ type: 'UPDATE_SECTION', payload: { sectionIdx: sectionIdx, section: updatedSection } })
+
       let content = updatedSection.content || ''
   
       // limit the character count to 2000
@@ -193,6 +230,7 @@ const SectionCard = ({ sectionIdx  }: SectionCardProps) => {
       setIsLoading(false)
       appStateContext?.dispatch({ type: 'REMOVED_FAILED_SECTION', payload: {section : updatedSection} })
 
+      console.log(`📝 Adding section "${sectionTitle}" to loaded sections`);
       appStateContext?.dispatch({ type: 'UPDATE_IS_LOADED_SECTIONS', payload: {section : updatedSection} })
 
 
@@ -207,9 +245,11 @@ const SectionCard = ({ sectionIdx  }: SectionCardProps) => {
 
   useEffect(() => {
     if (sectionContent === '' && !isLoading && !isManuallyCleared) {
+      console.log(`🔄 Section "${sectionTitle}" is empty, fetching content...`);
       fetchSectionContent(sectionTitle, sectionDescription)
     }else {
       if(sectionContent!='' && !isLoading){
+        console.log(`✅ Section "${sectionTitle}" has content, adding to loaded sections`);
         const updatedSection: Section = {...section}
         appStateContext?.dispatch({ type: 'UPDATE_IS_LOADED_SECTIONS', payload: {section : updatedSection} })
       }

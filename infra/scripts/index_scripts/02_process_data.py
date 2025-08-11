@@ -1,90 +1,68 @@
-from azure.keyvault.secrets import SecretClient
 from openai import AzureOpenAI
 import re
 import time
 import pypdf
-from io import BytesIO
+from pathlib import Path
 from azure.search.documents import SearchClient
-from azure.storage.filedatalake import DataLakeServiceClient
-from azure.search.documents.indexes import SearchIndexClient
+from azure.core.credentials import AzureKeyCredential
 from azure.identity import (AzureCliCredential, get_bearer_token_provider)
 
+# Configuration - using your values from 01_create_search_index.py
+search_service_name = "recipe-search"
+search_admin_key = "REDACTED_AZURE_SEARCH_KEY"
+azure_openai_endpoint = "https://fridayjuly4azureopenai.openai.azure.com/"
+azure_openai_key = "REDACTED_AZURE_OPENAI_KEY"
 
-key_vault_name = 'kv_to-be-replaced'
-managed_identity_client_id = 'mici_to-be-replaced'
-file_system_client_name = "data"
-directory = 'pdf'
-index_name = "pdf_index"
-
-
-def get_secrets_from_kv(secret_name: str) -> str:
-    """
-    Retrieves a secret value from Azure Key Vault.
-    Args:
-        secret_name (str): Name of the secret.
-        credential (AzureCliCredential): Credential with access to Key Vault.
-    Returns:
-        str: The secret value.
-    """
-    kv_credential = AzureCliCredential()
-    secret_client = SecretClient(
-        vault_url=f"https://{key_vault_name}.vault.azure.net/",
-        credential=kv_credential
-    )
-    return secret_client.get_secret(secret_name).value
-
-
-# Retrieve secrets from Key Vault
-search_endpoint = get_secrets_from_kv("AZURE-SEARCH-ENDPOINT")
-openai_api_base = get_secrets_from_kv("AZURE-OPENAI-ENDPOINT")
-openai_api_version = get_secrets_from_kv("AZURE-OPENAI-PREVIEW-API-VERSION")
-deployment = get_secrets_from_kv("AZURE-OPEN-AI-DEPLOYMENT-MODEL")
-account_name = get_secrets_from_kv("ADLS-ACCOUNT-NAME")
-print("Secrets retrieved from Key Vault.")
-
-# Azure Data Lake settings
-account_url = f"https://{account_name}.dfs.core.windows.net"
-credential = AzureCliCredential()
-service_client = DataLakeServiceClient(account_url, credential=credential, api_version='2023-01-03')
-file_system_client = service_client.get_file_system_client(file_system_client_name)
-directory_name = directory
-paths = file_system_client.get_paths(path=directory_name)
-print("Azure DataLake setup complete.")
+# Local data settings
+data_directory = "/workspaces/document-generation-solution-accelerator/infra/data"
+index_name = "food-recipe-index"
 
 # Azure Search settings
+search_endpoint = f"https://{search_service_name}.search.windows.net"
+credential = AzureKeyCredential(search_admin_key)
 search_client = SearchClient(search_endpoint, index_name, credential)
-index_client = SearchIndexClient(endpoint=search_endpoint, credential=credential)
-print("Azure Search setup complete.")
-
+print("✅ Azure Search setup complete.")
 
 # Function: Get Embeddings
-def get_embeddings(text: str, openai_api_base, openai_api_version):
-    model_id = "text-embedding-ada-002"
-    ad_token_provider = get_bearer_token_provider(
-        credential, "https://cognitiveservices.azure.com/.default"
-    )
-    client = AzureOpenAI(
-        api_version=openai_api_version,
-        azure_endpoint=openai_api_base,
-        azure_ad_token_provider=ad_token_provider
-    )
+def get_embeddings(text: str):
+    """Generate embeddings using Azure OpenAI"""
+    model_id = "text-embedding-3-large"  # CORRECTED: Use the actual deployed model
+    openai_api_version = "2024-02-15-preview"
+    
+    try:
+        # Try Azure CLI credential first
+        ad_token_provider = get_bearer_token_provider(
+            AzureCliCredential(), "https://cognitiveservices.azure.com/.default"
+        )
+        client = AzureOpenAI(
+            api_version=openai_api_version,
+            azure_endpoint=azure_openai_endpoint,
+            azure_ad_token_provider=ad_token_provider
+        )
+        embedding = client.embeddings.create(input=text, model=model_id).data[0].embedding
+        return embedding
+    except Exception as e:
+        print(f"⚠️  Azure CLI auth failed, using API key: {e}")
+        # Fallback to API key
+        client = AzureOpenAI(
+            api_key=azure_openai_key,
+            api_version=openai_api_version,
+            azure_endpoint=azure_openai_endpoint
+        )
+        embedding = client.embeddings.create(input=text, model=model_id).data[0].embedding
+        return embedding
 
-    embedding = client.embeddings.create(input=text, model=model_id).data[0].embedding
-    return embedding
-
-
-# Function: Clean Spaces with Regex -
+# Function: Clean Spaces with Regex
 def clean_spaces_with_regex(text):
     # Use a regular expression to replace multiple spaces with a single space
     cleaned_text = re.sub(r'\s+', ' ', text)
     # Use a regular expression to replace consecutive dots with a single dot
     cleaned_text = re.sub(r'\.{2,}', '.', cleaned_text)
-    return cleaned_text
-
+    return cleaned_text.strip()
 
 # Function: Chunk Data
 def chunk_data(text):
-    tokens_per_chunk = 256  # 1024 # 500
+    tokens_per_chunk = 500  # Increased for recipe content
     text = clean_spaces_with_regex(text)
 
     sentences = text.split('. ')  # Split text into sentences
@@ -107,7 +85,8 @@ def chunk_data(text):
             current_chunk_token_count += len(tokens)
         else:
             # Add current chunk to chunks list and start a new chunk
-            chunks.append(current_chunk)
+            if current_chunk:  # Only add non-empty chunks
+                chunks.append(current_chunk)
             current_chunk = sentence
             current_chunk_token_count = len(tokens)
 
@@ -117,66 +96,143 @@ def chunk_data(text):
 
     return chunks
 
-
 # Function: Prepare Search Document
-def prepare_search_doc(content, document_id):
+def prepare_search_doc(content, filename):
+    """Prepare search documents matching your index schema"""
     chunks = chunk_data(content)
     results = []
+    
+    # Create document ID from filename
+    document_id = filename.replace('.pdf', '').replace(' ', '_').replace('-', '_')
+    
     for idx, chunk in enumerate(chunks, 1):
-        chunk_id = f"{document_id}_{str(idx).zfill(2)}"
+        chunk_id = f"{document_id}_{str(idx).zfill(3)}"
+        
+        print(f"  📝 Processing chunk {idx}/{len(chunks)}: {len(chunk)} chars")
 
         try:
-            v_contentVector = get_embeddings(str(chunk), openai_api_base, openai_api_version)
+            v_contentVector = get_embeddings(str(chunk))
+            print(f"  ✅ Generated embedding for chunk {idx}")
         except Exception as e:
-            print(f"Error occurred: {e}. Retrying after 30 seconds...")
-            time.sleep(30)
+            print(f"  ❌ Error getting embedding for chunk {idx}: {e}")
+            print(f"  🔄 Retrying after 10 seconds...")  # Reduced retry time
+            time.sleep(10)
             try:
-                v_contentVector = get_embeddings(str(chunk), openai_api_base, openai_api_version)
+                v_contentVector = get_embeddings(str(chunk))
+                print(f"  ✅ Retry successful for chunk {idx}")
             except Exception as e:
-                print(f"Retry failed: {e}. Setting v_contentVector to an empty list.")
+                print(f"  ❌ Retry failed for chunk {idx}: {e}")
                 v_contentVector = []
 
+        # Match your index schema from 01_create_search_index.py
         result = {
             "id": chunk_id,
             "chunk_id": chunk_id,
             "content": chunk,
-            "sourceurl": path.name.split('/')[-1],
+            "title": filename.replace('.pdf', '').replace('-', ' ').title(),
+            "filepath": str(Path(data_directory) / filename),
+            "url": f"file://{Path(data_directory) / filename}",
             "contentVector": v_contentVector
         }
         results.append(result)
+    
     return results
 
+def main():
+    """Main function to process local PDF files"""
+    print("🚀 Starting local PDF processing...")
+    print(f"📁 Data directory: {data_directory}")
+    print(f"🔍 Target index: {index_name}")
+    print(f"🤖 Using embedding model: text-embedding-3-large")  # Added model info
+    
+    # Get all PDF files from local directory
+    pdf_files = list(Path(data_directory).glob("*.pdf"))
+    print(f"📚 Found {len(pdf_files)} PDF files:")
+    for pdf in pdf_files:
+        print(f"   - {pdf.name}")
+    
+    docs = []
+    counter = 0
+    total_chunks = 0
 
-# conversationIds = []
-docs = []
-counter = 0
+    for pdf_path in pdf_files:
+        print(f"\n📄 Processing: {pdf_path.name}")
+        
+        try:
+            # Read PDF file
+            with open(pdf_path, 'rb') as file:
+                pdf_reader = pypdf.PdfReader(file)
+                
+                # Check if PDF is password protected
+                if pdf_reader.is_encrypted:
+                    print(f"  ⚠️  Skipping password-protected file: {pdf_path.name}")
+                    continue
+                
+                filename = pdf_path.name
+                
+                # Extract text from all pages
+                text = ''
+                num_pages = len(pdf_reader.pages)
+                print(f"  📖 Extracting text from {num_pages} pages")
+                
+                for page_num in range(num_pages):
+                    page = pdf_reader.pages[page_num]
+                    page_text = page.extract_text()
+                    if page_text:
+                        text += page_text + '\n'
+                
+                if not text.strip():
+                    print(f"  ⚠️  No text extracted from {filename}")
+                    continue
+                
+                print(f"  ✅ Extracted {len(text)} characters")
+                
+                # Prepare search documents
+                result = prepare_search_doc(text, filename)
+                docs.extend(result)
+                total_chunks += len(result)
+                
+                print(f"  ✅ Created {len(result)} chunks from {filename}")
+                
+                counter += 1
+                
+                # Upload in batches of 20 documents (reduced for better reliability)
+                if len(docs) >= 20:
+                    print(f"\n📤 Uploading batch of {len(docs)} documents...")
+                    try:
+                        upload_result = search_client.upload_documents(documents=docs)
+                        successful = sum(1 for r in upload_result if r.succeeded)
+                        failed = len(docs) - successful
+                        print(f"  ✅ Successfully uploaded {successful}/{len(docs)} documents")
+                        if failed > 0:
+                            print(f"  ⚠️  {failed} documents failed to upload")
+                        docs = []
+                    except Exception as e:
+                        print(f"  ❌ Error uploading batch: {e}")
+                        docs = []
+        
+        except Exception as e:
+            print(f"  ❌ Error processing {pdf_path.name}: {e}")
+            continue
 
+    # Upload remaining documents
+    if docs:
+        print(f"\n📤 Uploading final batch of {len(docs)} documents...")
+        try:
+            upload_result = search_client.upload_documents(documents=docs)
+            successful = sum(1 for r in upload_result if r.succeeded)
+            failed = len(docs) - successful
+            print(f"  ✅ Successfully uploaded {successful}/{len(docs)} documents")
+            if failed > 0:
+                print(f"  ⚠️  {failed} documents failed to upload")
+        except Exception as e:
+            print(f"  ❌ Error uploading final batch: {e}")
 
-for path in paths:
-    file_client = file_system_client.get_file_client(path.name)
-    pdf_file = file_client.download_file()
+    print(f"\n🎉 Processing complete!")
+    print(f"   📚 Files processed: {counter}")
+    print(f"   📝 Total chunks created: {total_chunks}")
+    print(f"   🔍 Index: {index_name}")
+    print(f"   🔗 View at: https://portal.azure.com/")
 
-    stream = BytesIO()
-    pdf_file.readinto(stream)
-    pdf_reader = pypdf.PdfReader(stream)
-    filename = path.name.split('/')[-1]
-    document_id = filename.split('_')[1].replace('.pdf', '')
-
-    text = ''
-    num_pages = len(pdf_reader.pages)
-    for page_num in range(num_pages):
-
-        page = pdf_reader.pages[page_num]
-        text += page.extract_text()
-    result = prepare_search_doc(text, document_id)
-    docs.extend(result)
-
-    counter += 1
-    if docs != [] and counter % 10 == 0:
-        result = search_client.upload_documents(documents=docs)
-        docs = []
-
-if docs != []:
-    results = search_client.upload_documents(documents=docs)
-
-print(f'{str(counter)} files processed.')
+if __name__ == "__main__":
+    main()

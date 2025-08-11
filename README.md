@@ -1,8 +1,18 @@
-# Document generation solution accelerator
+# Document Generator RAG Solution
 
-This solution accelerator is a powerful tool that helps you create your own AI assistant for document generation. The accelerator can be used by any customer looking for reusable architecture and code snippets to build an AI assistant to generate a sample template and content grounded on their own enterprise data. 
+![Document Generator](https://img.shields.io/badge/AI-Document%20Generator-blue)
+![Azure](https://img.shields.io/badge/Azure-OpenAI-green)
+![React](https://img.shields.io/badge/React-TypeScript-blue)
+![Python](https://img.shields.io/badge/Python-FastAPI-red)
 
-This example focuses on a generic use case - chat with your own data, generate a document template using your own data, and exporting the document in a docx format.
+This solution accelerator is a powerful AI-powered document generation tool that helps you create professional documents using Azure OpenAI and Azure AI Search. Generate structured documents, edit them in a user-friendly interface, and export them as formatted Word documents.
+
+**✨ Key Features:**
+- 🤖 **AI Document Generation** using GPT-4o
+- 🔍 **Semantic Search** through your document corpus  
+- 📝 **Interactive Draft Editor** with section-based editing
+- 📄 **Professional Word Export** with Times New Roman formatting
+- 🎨 **Modern React UI** with TypeScript and Fluent UI components
 
 <br/>
 
@@ -17,9 +27,11 @@ This example focuses on a generic use case - chat with your own data, generate a
 Solution overview
 </h2>
 
-It leverages Azure OpenAI Service and Azure AI Search, to identify relevant documents, summarize unstructured information, and generate document templates. 
+This solution leverages Azure OpenAI Service (GPT-4o) and Azure AI Search to generate professional documents grounded in your enterprise data. The application provides an intuitive workflow: **Generate** → **Draft** → **Export**.
 
-The sample data is sourced from generic AI-generated promissory notes. The documents are intended for use as sample data only.
+**Architecture:** React TypeScript frontend + Python FastAPI backend + Azure AI services
+
+The sample data includes AI-generated promissory notes and legal documents for demonstration purposes.
 
 ### Solution architecture
 |![image](./docs/images/DocGen_Azure_AI_Foundry_Architecture.png)|

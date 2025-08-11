@@ -34,7 +34,7 @@ export const ChatMessageContainer = forwardRef<HTMLDivElement, ChatMessageContai
                         <div className={styles.chatMessageGpt}>
                             <Answer
                                 answer={{
-                                    answer: type === ChatType.Browse ? answer.content : generateTemplateSections(answer.content),
+                                    answer: answer.content, // Use content directly for both Browse and Template types
                                     citations: type === ChatType.Browse ? parseCitationFromMessage(messages[index - 1]) : [], // Ensure previous message exists before parsing
                                     message_id: answer.id,
                                     feedback: answer.feedback

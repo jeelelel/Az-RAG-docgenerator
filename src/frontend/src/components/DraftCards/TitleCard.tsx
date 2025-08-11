@@ -18,7 +18,9 @@ const TitleCard: React.FC<TitleCardProps> = () => {
   const appStateContext = useContext(AppStateContext)
   const classes = useStyles()
   const handleChange = (event: React.FormEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    appStateContext?.dispatch({ type: 'UPDATE_DRAFTED_DOCUMENT_TITLE', payload: event.currentTarget.value })
+    const newTitle = event.currentTarget.value
+    console.log(`📝 Title changed to: "${newTitle}"`)
+    appStateContext?.dispatch({ type: 'UPDATE_DRAFTED_DOCUMENT_TITLE', payload: newTitle })
   }
 
   if (!appStateContext) {
