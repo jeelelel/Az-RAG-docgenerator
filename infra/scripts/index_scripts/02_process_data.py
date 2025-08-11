@@ -6,16 +6,32 @@ from pathlib import Path
 from azure.search.documents import SearchClient
 from azure.core.credentials import AzureKeyCredential
 from azure.identity import (AzureCliCredential, get_bearer_token_provider)
+import os
+from dotenv import load_dotenv
 
-# Configuration - using your values from 01_create_search_index.py
-search_service_name = "recipe-search"
-search_admin_key = "REDACTED_AZURE_SEARCH_KEY"
-azure_openai_endpoint = "https://fridayjuly4azureopenai.openai.azure.com/"
-azure_openai_key = "REDACTED_AZURE_OPENAI_KEY"
+# Load environment variables
+load_dotenv()
+
+# Configuration - loaded from environment variables
+search_service_name = os.getenv("AZURE_SEARCH_SERVICE_NAME", "recipe-search")
+search_admin_key = os.getenv("AZURE_SEARCH_ADMIN_KEY")
+azure_openai_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
+azure_openai_key = os.getenv("AZURE_OPENAI_API_KEY")
+
+# Validate required environment variables
+required_vars = {
+    "AZURE_SEARCH_ADMIN_KEY": search_admin_key,
+    "AZURE_OPENAI_ENDPOINT": azure_openai_endpoint,
+    "AZURE_OPENAI_API_KEY": azure_openai_key
+}
+
+for var_name, var_value in required_vars.items():
+    if not var_value:
+        raise ValueError(f"Required environment variable {var_name} is not set. Please check your .env file.")
 
 # Local data settings
 data_directory = "/workspaces/document-generation-solution-accelerator/infra/data"
-index_name = "food-recipe-index"
+index_name = os.getenv("AZURE_SEARCH_INDEX_NAME", "food-recipe-index")
 
 # Azure Search settings
 search_endpoint = f"https://{search_service_name}.search.windows.net"

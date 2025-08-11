@@ -14,17 +14,33 @@ from azure.search.documents.indexes.models import (
 )
 from azure.search.documents.indexes import SearchIndexClient
 from azure.core.credentials import AzureKeyCredential
+import os
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # === Configuration ===
-# CORRECTED Configuration to match your actual Azure resources
-search_service_name = "recipe-search"  # Your search resource name
-search_admin_key = "REDACTED_AZURE_SEARCH_KEY"  # Your admin key
-azure_openai_endpoint = "https://fridayjuly4azureopenai.openai.azure.com/"  # Your actual endpoint
-azure_openai_key = "REDACTED_AZURE_OPENAI_KEY"  # Your OpenAI key
-embedding_model = "text-embedding-3-large"  # CORRECTED: Your actual deployed model
+# Configuration loaded from environment variables
+search_service_name = os.getenv("AZURE_SEARCH_SERVICE_NAME", "recipe-search")
+search_admin_key = os.getenv("AZURE_SEARCH_ADMIN_KEY")
+azure_openai_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
+azure_openai_key = os.getenv("AZURE_OPENAI_API_KEY")
+embedding_model = os.getenv("AZURE_OPENAI_EMBEDDING_MODEL", "text-embedding-3-large")
 
 # Use your existing index name
-index_name = "food-recipe-index"  # Your index name
+index_name = os.getenv("AZURE_SEARCH_INDEX_NAME", "food-recipe-index")
+
+# Validate required environment variables
+required_vars = {
+    "AZURE_SEARCH_ADMIN_KEY": search_admin_key,
+    "AZURE_OPENAI_ENDPOINT": azure_openai_endpoint,
+    "AZURE_OPENAI_API_KEY": azure_openai_key
+}
+
+for var_name, var_value in required_vars.items():
+    if not var_value:
+        raise ValueError(f"Required environment variable {var_name} is not set. Please check your .env file.")
 
 def delete_and_recreate_index():
     """Delete existing index and create new one with correct vector dimensions"""

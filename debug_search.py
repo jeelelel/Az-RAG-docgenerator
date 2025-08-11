@@ -3,14 +3,22 @@
 Debug Azure Search connectivity and test search
 """
 import asyncio
+import os
 from azure.search.documents.aio import SearchClient
 from azure.core.credentials import AzureKeyCredential
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 async def test_search_debug():
-    # Use the same settings as the app
-    endpoint = "https://friday4julysearch.search.windows.net"
-    index_name = "crossmark-21july"
-    key = "REDACTED_AZURE_SEARCH_KEY_2"
+    # Load settings from environment variables
+    endpoint = os.getenv("AZURE_SEARCH_ENDPOINT")
+    index_name = os.getenv("AZURE_SEARCH_INDEX", "crossmark-21july")
+    key = os.getenv("AZURE_SEARCH_KEY")
+    
+    if not endpoint or not key:
+        raise ValueError("AZURE_SEARCH_ENDPOINT and AZURE_SEARCH_KEY must be set in environment variables")
     
     search_client = SearchClient(
         endpoint=endpoint,
