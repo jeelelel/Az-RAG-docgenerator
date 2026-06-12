@@ -491,7 +491,7 @@ async def conversation_internal(request_body, request_headers):
         if chat_type == ChatType.TEMPLATE:
             print("Template generation request detected, using SimpleRAG fallback...")
             try:
-                from backend.simple_rag import simple_rag
+                from backend.rag import simple_rag
                 
                 # Extract the user message
                 messages = request_body.get("messages", [])
@@ -609,7 +609,7 @@ async def add_conversation():
     if request_json.get("chat_type") == "template":
         print("Template generation request detected in /history/generate, using SimpleRAG...")
         try:
-            from backend.simple_rag import simple_rag
+            from backend.rag import simple_rag
             
             # Extract the user message
             messages = request_json.get("messages", [])
@@ -1459,7 +1459,7 @@ async def simple_conversation():
         print(f"Processing chat request: '{user_message[:100]}{'...' if len(user_message) > 100 else ''}' (type: {chat_type})")
         
         # Import and use simple RAG
-        from backend.simple_rag import simple_rag
+        from backend.rag import simple_rag
         from backend.utils import format_stream_response
         
         # Check if this is a template generation request
@@ -1604,7 +1604,7 @@ Please create a well-structured, professional document section that includes:
 Make sure to use information from the retrieved documents and cite sources when possible."""
 
         # Import and use simple RAG
-        from backend.simple_rag import simple_rag
+        from backend.rag import simple_rag
         
         print("Starting section generation with SimpleRAG...")
         
@@ -1641,7 +1641,7 @@ async def document_read(doc_id: str):
     """Read a document by ID - for now, we'll use the doc_id as a search query"""
     try:
         # Import and use simple RAG
-        from backend.simple_rag import simple_rag
+        from backend.rag import simple_rag
         
         print(f"Document read request for ID: {doc_id}")
         
