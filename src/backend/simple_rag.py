@@ -1,6 +1,6 @@
 """
 Simple RAG implementation without Azure AI Foundry agents
-Uses Azure OpenAI and Azure Search directly, with fallback to local data
+Uses Azure OpenAI and Azure Search directly
 """
 import os
 import json
@@ -19,7 +19,6 @@ class SimpleRAG:
     def __init__(self):
         self.search_client = None
         self.openai_client = None
-        self.local_documents = []
         self._init_clients()
     
     def _init_clients(self):
