@@ -1,6 +1,6 @@
 """
 Simple RAG implementation without Azure AI Foundry agents
-Uses Azure OpenAI and Azure Search directly
+Uses Azure OpenAI and Azure Search directly, with fallback to local data
 """
 import os
 import json
@@ -19,6 +19,7 @@ class SimpleRAG:
     def __init__(self):
         self.search_client = None
         self.openai_client = None
+        self.local_documents = []
         self._init_clients()
     
     def _init_clients(self):
@@ -38,7 +39,7 @@ class SimpleRAG:
             
             # Initialize Azure OpenAI client using environment variables directly
             openai_key = os.getenv("AZURE_OPENAI_KEY")
-            openai_endpoint = app_settings.azure_openai.endpoint
+            openai_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
             
             if openai_key and openai_endpoint:
                 self.openai_client = AsyncAzureOpenAI(
@@ -73,12 +74,11 @@ class SimpleRAG:
                 try:
                     print(f"Strategy {i+1}: {strategy}")
                     
-                    # Prepare search parameters - start with basic fields
+                    # Prepare search parameters - use correct field names for this index
                     search_params = {
                         "top": top_k,
                         "include_total_count": True,
-                        "highlight_fields": "content"
-                        # Removed select parameter - let it return all available fields
+                        "highlight_fields": "chunk"  # Use 'chunk' field for highlighting
                     }
                     search_params.update(strategy)
                     
@@ -89,7 +89,7 @@ class SimpleRAG:
                     
                     async for doc in results:
                         total_count += 1
-                        content = doc.get('content', '').strip()
+                        content = doc.get('chunk', '').strip()  # Use 'chunk' field for content
                         
                         # Skip documents with no meaningful content
                         if len(content) < 10:
@@ -149,25 +149,84 @@ class SimpleRAG:
                 yield "OpenAI client is not initialized. Please check the configuration."
                 return
             
-            # Create context from documents with better formatting
+            # Helper to convert tabbed lines to HTML table
+            def tabbed_lines_to_html_table(text):
+                lines = text.split('\n')
+                table_rows = []
+                for line in lines:
+                    if '\t' in line:
+                        cells = line.split('\t')
+                        table_rows.append('<tr>' + ''.join(f'<td>{cell.strip()}</td>' for cell in cells) + '</tr>')
+                if table_rows:
+                    header = table_rows[0]
+                    table_html = '<table border="1">' + header + ''.join(table_rows[1:]) + '</table>'
+                    return table_html
+                return None
+
             context_parts = []
             for i, doc in enumerate(documents, 1):
-                content = doc['content'][:1500]  # Increased content length
+                raw_content = doc['content'][:3000]  # Further increased content length
+                table_html = tabbed_lines_to_html_table(raw_content)
+                if table_html:
+                    content = f"[Table detected]\n{table_html}"
+                else:
+                    content = raw_content
                 title = doc['title']
                 source = doc['sourceurl']
-                
                 context_parts.append(f"Document {i}:\nTitle: {title}\nSource: {source}\nContent: {content}\n")
-            
             context = "\n".join(context_parts)
             
-            system_message = """You are a helpful AI assistant that answers questions based on provided documents. 
-            
-            Guidelines:
-            - Use the context provided to answer the user's question accurately
-            - If the answer is not clearly in the context, say "Based on the available documents, I don't have enough information to answer that question."
-            - Always cite the document sources when providing information
-            - Be specific and provide detailed answers when possible
-            - If multiple documents contain relevant information, synthesize the information coherently"""
+            system_message = """
+You are a helpful AI assistant. Your task is to generate a new report or document based on the user's prompt, using the provided previous documents as templates and examples.
+
+Guidelines:
+- Carefully analyze the structure, style, and details of the provided documents.
+- Synthesize a new, original report that matches the structure and formatting of the examples, but is tailored to the user's prompt.
+- Always keep the structure of the report as defined below, regardless of the user prompt or the structure of the previous documents.
+- Do not copy content verbatim; instead, use the context as a guide for structure, tone, and required sections.
+- If the user prompt requests a new SOW or similar document, generate all required sections, filling in details relevant to the prompt.
+- Always cite sources if you use specific information from the context.
+- If information is missing, make reasonable assumptions or clearly indicate where user input is needed.
+- If the answer is not clearly in the context, say "Based on the available documents, I don't have enough information to answer that question."
+- Be specific and provide detailed answers when possible.
+- If multiple documents contain relevant information, synthesize the information coherently.
+- For fee precision, try to give an estimate based on how many days will be required for the project and always give out an exact number for fees.
+- If user gave budget constraints, make sure to address them in the proposal and expand the budget in a more detailed way for example if they said budget is 10 days the 2 days is for preparation and etc. if the give money budget expansion is needed, provide a detailed breakdown of how the budget will be allocated across different phases of the project.
+
+The content must strictly be formatted as follows:
+1. Executive Summary (Minimum 300 words)
+2. Approach
+    Explanation of Approach and Methodologies (Minimum 300 words)
+    2.1 In Scope (Use ID IN01, IN02, ... and Description)
+    2.2 Out of Scope (Use ID OOS01, OOS02, ... and Description)
+    2.3 Deliverables (Use ID DEL01, DEL02, ... and Description)
+    2.4 Assumptions (Use ID A01, A02, ... and Description)
+    2.5 Dependencies (Use ID DEP01, DEP02, ... and Description)
+    2.6 Risks (Use ID RIS01, RIS02, ... and Description)
+3. Fees and Timings
+    3.1 Fees
+        3.1.1 Work Effort Estimate
+        3.1.2 Cost Estimates
+    3.2 Timelines
+        Start Date :
+        End Date :
+    3.3 Synogize Personnel (Table Name and Role)
+    3.4 Client Personnel (Table Name and Role)
+4. Agreement (Executed by:, Synogize, Client)
+    Executed by: (Sign)
+    Synogize: ______________________
+    Title: ______________________
+    Date: _____________________
+
+    Executed by: (Sign)
+
+    [Client Name]
+    Title: ______________________
+    Date: _____________________
+
+5. Schedule A Consulting Services Terms and Conditions (Full Version from Previous datas)
+6. Schedule B Data Safeguard for Client Data (Full Version from Previous datas)
+"""
             
             user_message = f"""Context from relevant documents:
 {context}
@@ -187,7 +246,7 @@ Please provide a comprehensive answer based on the context above. If you cannot 
                         {"role": "user", "content": user_message}
                     ],
                     temperature=0.3,
-                    max_tokens=1500,  # Increased token limit
+                    max_tokens=5000,  # Further increased token limit
                     stream=True
                 )
                 

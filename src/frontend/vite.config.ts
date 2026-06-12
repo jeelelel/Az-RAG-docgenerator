@@ -11,15 +11,15 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      '/ask': 'http://127.0.0.1:50505',
-      '/chat': 'http://127.0.0.1:50505',
-      '/simple_conversation': 'http://127.0.0.1:50505',
-      '/conversation': 'http://127.0.0.1:50505',
-      '/frontend_settings': 'http://127.0.0.1:50505',
-      '/history': 'http://127.0.0.1:50505',
-      '/document': 'http://127.0.0.1:50505',
-      '/simple_section_generate': 'http://127.0.0.1:50505',
-      '/section': 'http://127.0.0.1:50505'
+      '/ask': 'http://127.0.0.1:8000',
+      '/chat': 'http://127.0.0.1:8000',
+      '/simple_conversation': 'http://127.0.0.1:8000',
+      '/conversation': 'http://127.0.0.1:8000',
+      '/frontend_settings': 'http://127.0.0.1:8000',
+      '/history': 'http://127.0.0.1:8000',
+      '/document': 'http://127.0.0.1:8000',
+      '/simple_section_generate': 'http://127.0.0.1:8000',
+      '/section': 'http://127.0.0.1:8000'
     }
   }
 })
