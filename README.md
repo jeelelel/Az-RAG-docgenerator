@@ -196,6 +196,45 @@ Check out similar solution accelerators
 <br/>   
 
 
+## Local development
+
+**Prerequisites:** Python 3.11+, Node.js 18+, Azure AI Search, Azure OpenAI
+
+Copy `.env.example` to `.env` and set:
+
+```
+AZURE_SEARCH_SERVICE=<your-search-service-name>
+AZURE_SEARCH_KEY=<your-search-admin-key>
+AZURE_SEARCH_INDEX=<your-index-name>
+AZURE_OPENAI_ENDPOINT=<https://your-openai-service.openai.azure.com/>
+AZURE_OPENAI_KEY=<your-openai-key>
+AZURE_OPENAI_MODEL=<your-deployment-name>
+```
+
+**Terminal 1 — Backend (port 8000):**
+```bash
+cd src
+python app.py
+```
+
+**Terminal 2 — Frontend (port 5173):**
+```bash
+cd src/frontend
+npm install
+npm run dev
+```
+
+Open `http://localhost:5173`.
+
+| Route | Description |
+|-------|-------------|
+| `/` | Dashboard |
+| `/#/chat` | Browse and search documents |
+| `/#/generate` | AI document generation |
+| `/#/draft` | Edit and export generated drafts |
+
+<br/>
+
 ## Provide feedback
 
 Have questions, find a bug, or want to request a feature? [Submit a new issue](https://github.com/microsoft/document-generation-solution-accelerator/issues) on this repo and we'll connect.
