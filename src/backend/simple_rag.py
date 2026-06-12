@@ -10,7 +10,6 @@ from azure.core.credentials import AzureKeyCredential
 from openai import AsyncAzureOpenAI
 from backend.settings import app_settings
 
-# Load environment variables from .env file
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -22,9 +21,7 @@ class SimpleRAG:
         self._init_clients()
     
     def _init_clients(self):
-        """Initialize Azure Search and OpenAI clients"""
         try:
-            # Initialize Azure Search client
             if app_settings.datasource:
                 self.search_client = SearchClient(
                     endpoint=app_settings.datasource.endpoint,
@@ -36,7 +33,6 @@ class SimpleRAG:
             else:
                 print("No datasource configuration found")
             
-            # Initialize Azure OpenAI client using environment variables directly
             openai_key = os.getenv("AZURE_OPENAI_KEY")
             openai_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
             
@@ -53,7 +49,6 @@ class SimpleRAG:
             print(f"Error initializing SimpleRAG clients: {e}")
     
     async def search_documents(self, query: str, top_k: int = 5) -> List[Dict[str, Any]]:
-        """Search for relevant documents with improved robustness"""
         try:
             if not self.search_client:
                 print("Search client not initialized")
@@ -61,7 +56,6 @@ class SimpleRAG:
                 
             print(f"Searching for: '{query}' in index: {app_settings.datasource.index if app_settings.datasource else 'None'}")
             
-            # Try different search strategies
             search_strategies = [
                 {"search_text": query, "search_mode": "any"},
                 {"search_text": query, "search_mode": "all"},
@@ -73,11 +67,10 @@ class SimpleRAG:
                 try:
                     print(f"Strategy {i+1}: {strategy}")
                     
-                    # Prepare search parameters - use correct field names for this index
                     search_params = {
                         "top": top_k,
                         "include_total_count": True,
-                        "highlight_fields": "chunk"  # Use 'chunk' field for highlighting
+                        "highlight_fields": "chunk"
                     }
                     search_params.update(strategy)
                     
@@ -88,14 +81,11 @@ class SimpleRAG:
                     
                     async for doc in results:
                         total_count += 1
-                        content = doc.get('chunk', '').strip()  # Use 'chunk' field for content
-                        
-                        # Skip documents with no meaningful content
+                        content = doc.get('chunk', '').strip()
                         if len(content) < 10:
                             continue
                         
-                        # Try different field names for source/filename
-                        source = (doc.get('sourceurl') or 
+                        source = (doc.get('sourceurl') or
                                 doc.get('filename') or 
                                 doc.get('filelocation') or 
                                 doc.get('source') or 
@@ -103,8 +93,7 @@ class SimpleRAG:
                                 doc.get('id') or 
                                 'Unknown')
                         
-                        # Try different field names for title
-                        title = (doc.get('title') or 
+                        title = (doc.get('title') or
                                doc.get('filename') or 
                                doc.get('subject') or 
                                doc.get('name') or 
@@ -116,12 +105,12 @@ class SimpleRAG:
                             'sourceurl': source,
                             'title': title,
                             'highlights': doc.get('@search.highlights', {}),
-                            'raw_doc': dict(doc)  # Keep raw doc for debugging
+                            'raw_doc': dict(doc)
                         })
                     
                     print(f"Strategy {i+1} found {len(documents)} usable documents (from {total_count} total)")
                     
-                    if documents:  # Return first successful search with content
+                    if documents:
                         return documents
                         
                 except Exception as strategy_error:
@@ -138,7 +127,6 @@ class SimpleRAG:
             return []
     
     async def generate_response(self, query: str, documents: List[Dict[str, Any]]) -> AsyncGenerator[str, None]:
-        """Generate response using retrieved documents with improved error handling"""
         try:
             if not documents:
                 yield "I couldn't find any relevant documents to answer your question. Please try rephrasing your query or ask about a different topic."
@@ -148,7 +136,6 @@ class SimpleRAG:
                 yield "OpenAI client is not initialized. Please check the configuration."
                 return
             
-            # Helper to convert tabbed lines to HTML table
             def tabbed_lines_to_html_table(text):
                 lines = text.split('\n')
                 table_rows = []
@@ -164,7 +151,7 @@ class SimpleRAG:
 
             context_parts = []
             for i, doc in enumerate(documents, 1):
-                raw_content = doc['content'][:3000]  # Further increased content length
+                raw_content = doc['content'][:3000]
                 table_html = tabbed_lines_to_html_table(raw_content)
                 if table_html:
                     content = f"[Table detected]\n{table_html}"
@@ -236,7 +223,6 @@ Please provide a comprehensive answer based on the context above. If you cannot 
 
             print(f"Generating response for query: '{query}' using {len(documents)} documents")
             
-            # Stream the response with better error handling
             try:
                 response = await self.openai_client.chat.completions.create(
                     model=app_settings.azure_openai.model,
@@ -245,7 +231,7 @@ Please provide a comprehensive answer based on the context above. If you cannot 
                         {"role": "user", "content": user_message}
                     ],
                     temperature=0.3,
-                    max_tokens=5000,  # Further increased token limit
+                    max_tokens=5000,
                     stream=True
                 )
                 
@@ -272,7 +258,6 @@ Please provide a comprehensive answer based on the context above. If you cannot 
             yield f"An unexpected error occurred: {str(e)}. Please try again."
     
     async def chat(self, query: str) -> AsyncGenerator[str, None]:
-        """Main chat function with comprehensive error handling"""
         try:
             if not query or not query.strip():
                 yield "Please provide a question or query."
@@ -281,7 +266,6 @@ Please provide a comprehensive answer based on the context above. If you cannot 
             query = query.strip()
             print(f"Processing chat query: '{query}'")
             
-            # Check if clients are initialized
             if not self.search_client:
                 yield "Search functionality is not available. Please check the Azure Search configuration."
                 return
@@ -290,7 +274,6 @@ Please provide a comprehensive answer based on the context above. If you cannot 
                 yield "AI response generation is not available. Please check the OpenAI configuration."
                 return
             
-            # Search for relevant documents
             print("Starting document search...")
             documents = await self.search_documents(query)
             print(f"Document search completed. Found {len(documents)} documents")
@@ -305,7 +288,6 @@ Please provide a comprehensive answer based on the context above. If you cannot 
                 yield "- Checking if your question relates to the documents in our knowledge base"
                 return
             
-            # Generate response
             print("Starting response generation...")
             response_generated = False
             async for chunk in self.generate_response(query, documents):
@@ -322,5 +304,5 @@ Please provide a comprehensive answer based on the context above. If you cannot 
             yield f"An unexpected error occurred while processing your request: {str(e)}. Please try again."
 
 
-# Global instance
+
 simple_rag = SimpleRAG()
