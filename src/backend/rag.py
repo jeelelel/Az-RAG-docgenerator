@@ -144,8 +144,7 @@ class SimpleRAG:
                         cells = line.split('\t')
                         table_rows.append('<tr>' + ''.join(f'<td>{cell.strip()}</td>' for cell in cells) + '</tr>')
                 if table_rows:
-                    header = table_rows[0]
-                    table_html = '<table border="1">' + header + ''.join(table_rows[1:]) + '</table>'
+                    table_html = '<table border="1">' + ''.join(table_rows) + '</table>'
                     return table_html
                 return None
 
